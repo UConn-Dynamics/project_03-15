@@ -16,10 +16,10 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ a1b2c3d4-0001-11f1-0000-000000000001
+# ╔═╡ cell-imports
 using LinearAlgebra, Plots, PlutoUI, Printf
 
-# ╔═╡ f17103ea-06bf-11f1-a2b0-79e68ed152eb
+# ╔═╡ cell-intro
 md"""
 # Project\_03 - Multibody Dynamic modeling
 
@@ -46,21 +46,19 @@ In this project, you need to
 ---
 
 ### Generalised coordinates
-```
-q = [x₁, y₁, θ₁, x₂, y₂, θ₂]
-```
-- ``x_1, y_1, \theta_1`` — block position and orientation
-- ``x_2, y_2, \theta_2`` — bar centre-of-mass position and orientation
+
+``\mathbf{q} = [x_1,\ y_1,\ \theta_1,\ x_2,\ y_2,\ \theta_2]``
 
 ### Constraints ``C(\mathbf{q}) = 0``
-| # | Equation | Meaning |
-|---|----------|---------|
+
+| \# | Equation | Meaning |
+|----|----------|---------|
 | 1 | ``y_1 = 0`` | block on horizontal track |
 | 2 | ``\theta_1 = 0`` | block does not rotate |
-| 3 | ``x_2 - x_1 - \tfrac{L}{2}\sin\theta_2 = 0`` | pin joint (x) |
-| 4 | ``y_2 - \tfrac{L}{2}\cos\theta_2 = 0`` | pin joint (y) |
+| 3 | ``x_2 - x_1 - \tfrac{L}{2}\sin\theta_2 = 0`` | pin joint x |
+| 4 | ``y_2 - \tfrac{L}{2}\cos\theta_2 = 0`` | pin joint y |
 
-### Augmented (Lagrange multiplier) formulation
+### Augmented formulation
 
 ```math
 \begin{bmatrix} M & C_q^T \\ C_q & 0 \end{bmatrix}
@@ -69,16 +67,14 @@ q = [x₁, y₁, θ₁, x₂, y₂, θ₂]
 \begin{bmatrix} Q_e \\ \gamma \end{bmatrix}
 ```
 
-where ``\lambda`` gives the **constraint forces** directly.
+``\lambda`` gives the constraint forces directly.
 """
 
-# ╔═╡ a1b2c3d4-0002-11f1-0000-000000000002
+# ╔═╡ cell-params-header
 md"## ① System parameters"
 
-# ╔═╡ a1b2c3d4-0003-11f1-0000-000000000003
+# ╔═╡ cell-sliders-params
 md"""
-Use the sliders to explore different parameter values.
-
 **Bar length** ``L`` (m): $(@bind L_val Slider(0.1:0.05:1.0, default=0.4, show_value=true))
 
 **Spring stiffness** ``k`` (N/m): $(@bind k_val Slider(1.0:1.0:50.0, default=10.0, show_value=true))
@@ -88,10 +84,10 @@ Use the sliders to explore different parameter values.
 **Bar mass** ``m_2`` (kg): $(@bind m2_val Slider(0.05:0.05:1.0, default=0.3, show_value=true))
 """
 
-# ╔═╡ a1b2c3d4-0004-11f1-0000-000000000004
+# ╔═╡ cell-ic-header
 md"## ② Initial conditions"
 
-# ╔═╡ a1b2c3d4-0005-11f1-0000-000000000005
+# ╔═╡ cell-sliders-ic
 md"""
 **Initial block displacement** ``x_1(0)`` (m): $(@bind x1_ic Slider(-0.2:0.01:0.2, default=0.05, show_value=true))
 
@@ -100,23 +96,18 @@ md"""
 **Simulation duration** (s): $(@bind t_end_val Slider(2.0:1.0:20.0, default=10.0, show_value=true))
 """
 
-# ╔═╡ a1b2c3d4-0006-11f1-0000-000000000006
+# ╔═╡ cell-solver-header
 md"## ③ Solver"
 
-# ╔═╡ a1b2c3d4-0007-11f1-0000-000000000007
+# ╔═╡ cell-derived
 begin
-	# ── Derived constants from sliders ──────────────────────────────────────────
-	const g_const = 9.81
-	I2_val = m2_val * L_val^2 / 12   # uniform bar moment of inertia
-
-	md"""
-	**Derived:** ``I_2 = m_2 L^2 / 12 =`` $(round(I2_val, sigdigits=5)) kg·m²
-	"""
+	g_acc = 9.81
+	I2_val = m2_val * L_val^2 / 12
+	md"``I_2 = m_2 L^2/12 =`` $(round(I2_val, sigdigits=5)) kg·m²"
 end
 
-# ╔═╡ a1b2c3d4-0008-11f1-0000-000000000008
+# ╔═╡ cell-functions
 begin
-	# ── Mass matrix ─────────────────────────────────────────────────────────────
 	function mass_matrix(m1, m2, I2)
 		M = zeros(6, 6)
 		M[1,1] = m1;  M[2,2] = m1;  M[3,3] = 1e-9
@@ -124,208 +115,186 @@ begin
 		return M
 	end
 
-	# ── External forces ─────────────────────────────────────────────────────────
-	function Qe(q, m1, m2, k)
+	function Qe(q, m1, m2, k, g)
 		F = zeros(6)
 		F[1] = -k * q[1]
-		F[2] = -m1 * g_const
-		F[5] = -m2 * g_const
+		F[2] = -m1 * g
+		F[5] = -m2 * g
 		return F
 	end
 
-	# ── Constraint vector ────────────────────────────────────────────────────────
 	function C_vec(q, L)
-		x1,y1,θ1,x2,y2,θ2 = q
+		x1, y1, th1, x2, y2, th2 = q
 		return [y1,
-		        θ1,
-		        x2 - x1 - (L/2)*sin(θ2),
-		        y2 - (L/2)*cos(θ2)]
+		        th1,
+		        x2 - x1 - (L/2)*sin(th2),
+		        y2 - (L/2)*cos(th2)]
 	end
 
-	# ── Constraint Jacobian ──────────────────────────────────────────────────────
 	function Cq_mat(q, L)
-		θ2 = q[6]
+		th2 = q[6]
 		J = zeros(4, 6)
-		J[1, 2] = 1.0
-		J[2, 3] = 1.0
-		J[3, 1] = -1.0;  J[3, 4] = 1.0;  J[3, 6] = -(L/2)*cos(θ2)
-		J[4, 5] = 1.0;   J[4, 6] =  (L/2)*sin(θ2)
+		J[1,2] =  1.0
+		J[2,3] =  1.0
+		J[3,1] = -1.0;  J[3,4] = 1.0;  J[3,6] = -(L/2)*cos(th2)
+		J[4,5] =  1.0;                  J[4,6] =  (L/2)*sin(th2)
 		return J
 	end
 
-	# ── Gamma vector (quadratic velocity terms) ──────────────────────────────────
 	function gamma_vec(q, qdot, L)
-		θ2    = q[6]
-		θ2dot = qdot[6]
+		th2 = q[6];  th2dot = qdot[6]
 		return [0.0, 0.0,
-		        -(L/2)*sin(θ2)*θ2dot^2,
-		        -(L/2)*cos(θ2)*θ2dot^2]
+		        -(L/2)*sin(th2)*th2dot^2,
+		        -(L/2)*cos(th2)*th2dot^2]
 	end
 
-	# ── Baumgarte-stabilised RHS ─────────────────────────────────────────────────
-	const ω_stab = 10.0
+	omega_s = 10.0
+
 	function gamma_stab(q, qdot, L)
+		J = Cq_mat(q, L)
+		gam = gamma_vec(q, qdot, L)
+		return gam .- 2*omega_s .* (J*qdot) .- omega_s^2 .* C_vec(q, L)
+	end
+
+	function solve_aug(q, qdot, m1, m2, k, L, I2, g)
+		M  = mass_matrix(m1, m2, I2)
 		J  = Cq_mat(q, L)
-		γ  = gamma_vec(q, qdot, L)
-		return γ .- 2ω_stab .* (J * qdot) .- ω_stab^2 .* C_vec(q, L)
+		nc = size(J,1);  nq = size(J,2)
+		A  = [M       J';
+		      J  zeros(nc,nc)]
+		b  = [Qe(q, m1, m2, k, g); gamma_stab(q, qdot, L)]
+		s  = A \ b
+		return s[1:nq], s[nq+1:end]
 	end
 
-	# ── Augmented EOM solve ──────────────────────────────────────────────────────
-	function solve_aug(q, qdot, m1, m2, k, L, I2)
-		M   = mass_matrix(m1, m2, I2)
-		J   = Cq_mat(q, L)
-		nc  = size(J, 1); nq = size(J, 2)
-		A   = [M        J';
-		       J  zeros(nc, nc)]
-		rhs = [Qe(q, m1, m2, k); gamma_stab(q, qdot, L)]
-		sol = A \ rhs
-		return sol[1:nq], sol[nq+1:end]
-	end
-
-	# ── RK4 step ────────────────────────────────────────────────────────────────
-	function rk4_step(q, qdot, dt, m1, m2, k, L, I2)
+	function rk4_step(q, qdot, dt, m1, m2, k, L, I2, g)
 		function D(q_, v_)
-			qdd, _ = solve_aug(q_, v_, m1, m2, k, L, I2)
+			qdd, _ = solve_aug(q_, v_, m1, m2, k, L, I2, g)
 			return v_, qdd
 		end
-		k1q,k1v = D(q, qdot)
-		k2q,k2v = D(q .+ 0.5dt.*k1q, qdot .+ 0.5dt.*k1v)
-		k3q,k3v = D(q .+ 0.5dt.*k2q, qdot .+ 0.5dt.*k2v)
-		k4q,k4v = D(q .+ dt.*k3q,    qdot .+ dt.*k3v)
-		q_new    = q    .+ (dt/6).*(k1q .+ 2k2q .+ 2k3q .+ k4q)
-		qdot_new = qdot .+ (dt/6).*(k1v .+ 2k2v .+ 2k3v .+ k4v)
+		k1q, k1v = D(q, qdot)
+		k2q, k2v = D(q .+ 0.5*dt.*k1q, qdot .+ 0.5*dt.*k1v)
+		k3q, k3v = D(q .+ 0.5*dt.*k2q, qdot .+ 0.5*dt.*k2v)
+		k4q, k4v = D(q .+ dt.*k3q,     qdot .+ dt.*k3v)
+		q_new    = q    .+ (dt/6).*(k1q .+ 2*k2q .+ 2*k3q .+ k4q)
+		qdot_new = qdot .+ (dt/6).*(k1v .+ 2*k2v .+ 2*k3v .+ k4v)
 		return q_new, qdot_new
 	end
 
-	md"*Solver functions defined ✓*"
+	md"*Solver functions defined*"
 end
 
-# ╔═╡ a1b2c3d4-0009-11f1-0000-000000000009
+# ╔═╡ cell-simulate
 begin
-	# ── Run simulation ───────────────────────────────────────────────────────────
-	θ2_ic = deg2rad(θ2_ic_deg)
+	th2_ic = deg2rad(θ2_ic_deg)
 	q0 = [x1_ic,
 	      0.0,
 	      0.0,
-	      x1_ic + (L_val/2)*sin(θ2_ic),
-	      (L_val/2)*cos(θ2_ic),
-	      θ2_ic]
+	      x1_ic + (L_val/2)*sin(th2_ic),
+	      (L_val/2)*cos(th2_ic),
+	      th2_ic]
 	qdot0 = zeros(6)
 
-	dt  = 1e-3
-	N   = round(Int, t_end_val / dt)
+	dt = 1e-3
+	N  = round(Int, t_end_val / dt)
 
-	times    = Vector{Float64}(undef, N+1)
-	qs_arr   = Matrix{Float64}(undef, N+1, 6)
-	λs_arr   = Matrix{Float64}(undef, N+1, 4)
-	C_viol   = Vector{Float64}(undef, N+1)
+	times  = Vector{Float64}(undef, N+1)
+	qs_arr = Matrix{Float64}(undef, N+1, 6)
+	ls_arr = Matrix{Float64}(undef, N+1, 4)
+	Cviol  = Vector{Float64}(undef, N+1)
 
-	q_cur    = copy(q0)
-	qdot_cur = copy(qdot0)
+	q_cur  = copy(q0)
+	qd_cur = copy(qdot0)
 
 	for i = 1:N+1
-		times[i]      = (i-1)*dt
-		qs_arr[i, :]  = q_cur
-		_, λ          = solve_aug(q_cur, qdot_cur, m1_val, m2_val, k_val, L_val, I2_val)
-		λs_arr[i, :]  = λ
-		C_viol[i]     = norm(C_vec(q_cur, L_val))
+		times[i]    = (i-1)*dt
+		qs_arr[i,:] = q_cur
+		_, lam      = solve_aug(q_cur, qd_cur, m1_val, m2_val, k_val, L_val, I2_val, g_acc)
+		ls_arr[i,:] = lam
+		Cviol[i]    = norm(C_vec(q_cur, L_val))
 		if i <= N
-			q_cur, qdot_cur = rk4_step(q_cur, qdot_cur, dt,
-			                            m1_val, m2_val, k_val, L_val, I2_val)
+			q_cur, qd_cur = rk4_step(q_cur, qd_cur, dt,
+			                          m1_val, m2_val, k_val, L_val, I2_val, g_acc)
 		end
 	end
 
-	x1_t  = qs_arr[:, 1]
-	θ2_t  = rad2deg.(qs_arr[:, 6])
-	Fx_t  = λs_arr[:, 3]
-	Fy_t  = λs_arr[:, 4]
+	x1_t = qs_arr[:,1]
+	th2_t = rad2deg.(qs_arr[:,6])
+	Fx_t = ls_arr[:,3]
+	Fy_t = ls_arr[:,4]
 
-	md"**Simulation complete** — $(N) steps, max constraint violation = $(round(maximum(C_viol), sigdigits=3))"
+	md"**Simulation complete** — $(N) steps, max |C| = $(round(maximum(Cviol), sigdigits=3))"
 end
 
-# ╔═╡ a1b2c3d4-0010-11f1-0000-000000000010
+# ╔═╡ cell-motion-header
 md"## ④ Results – Motion"
 
-# ╔═╡ a1b2c3d4-0011-11f1-0000-000000000011
+# ╔═╡ cell-motion-plot
 begin
 	p1 = plot(times, x1_t,
-		label = "x₁ (m)",
-		xlabel = "Time (s)", ylabel = "Position (m)",
-		title = "Block position x₁(t)",
-		linewidth = 2, color = :royalblue, legend = :topright)
-	hline!(p1, [0.0], linestyle=:dash, color=:grey, label="equilibrium")
+		label="x1 (m)", xlabel="Time (s)", ylabel="Position (m)",
+		title="Block position x1(t)", lw=2, color=:royalblue)
+	hline!(p1, [0.0], ls=:dash, color=:grey, label="equilibrium")
 
-	p2 = plot(times, θ2_t,
-		label = "θ₂ (°)",
-		xlabel = "Time (s)", ylabel = "Angle (°)",
-		title = "Bar angle θ₂(t)",
-		linewidth = 2, color = :crimson, legend = :topright)
-	hline!(p2, [0.0], linestyle=:dash, color=:grey, label="vertical")
+	p2 = plot(times, th2_t,
+		label="theta2 (deg)", xlabel="Time (s)", ylabel="Angle (deg)",
+		title="Bar angle theta2(t)", lw=2, color=:crimson)
+	hline!(p2, [0.0], ls=:dash, color=:grey, label="vertical")
 
-	plot(p1, p2, layout=(2,1), size=(800, 500))
+	plot(p1, p2, layout=(2,1), size=(780,500))
 end
 
-# ╔═╡ a1b2c3d4-0012-11f1-0000-000000000012
+# ╔═╡ cell-forces-header
 md"## ⑤ Results – Constraint (Pin-Joint) Forces"
 
-# ╔═╡ a1b2c3d4-0013-11f1-0000-000000000013
+# ╔═╡ cell-forces-plot
 begin
 	p3 = plot(times, Fx_t,
-		label = "Fₓ (N)", xlabel = "Time (s)", ylabel = "Force (N)",
-		title = "Pin constraint force – x component",
-		linewidth = 2, color = :darkorange)
-
+		label="Fx (N)", xlabel="Time (s)", ylabel="Force (N)",
+		title="Pin constraint force - x component", lw=2, color=:darkorange)
 	p4 = plot(times, Fy_t,
-		label = "Fy (N)", xlabel = "Time (s)", ylabel = "Force (N)",
-		title = "Pin constraint force – y component",
-		linewidth = 2, color = :darkgreen)
-
-	plot(p3, p4, layout=(2,1), size=(800, 500))
+		label="Fy (N)", xlabel="Time (s)", ylabel="Force (N)",
+		title="Pin constraint force - y component", lw=2, color=:darkgreen)
+	plot(p3, p4, layout=(2,1), size=(780,500))
 end
 
-# ╔═╡ a1b2c3d4-0014-11f1-0000-000000000014
+# ╔═╡ cell-phase-header
 md"## ⑥ Phase portraits"
 
-# ╔═╡ a1b2c3d4-0015-11f1-0000-000000000015
+# ╔═╡ cell-phase-plot
 begin
-	x1dot_t = [qs_arr[i,1] == qs_arr[min(i+1,N+1),1] ? 0.0 :
-	           (qs_arr[min(i+1,N+1),1] - qs_arr[i,1])/dt for i in 1:N+1]
-	θ2dot_t = [(qs_arr[min(i+1,N+1),6] - qs_arr[i,6])/dt for i in 1:N+1]
+	x1dot_t  = diff(qs_arr[:,1]) ./ dt
+	th2dot_t = diff(qs_arr[:,6]) ./ dt
 
-	ph1 = plot(x1_t, x1dot_t,
-		xlabel = "x₁ (m)", ylabel = "ẋ₁ (m/s)",
-		title = "Phase portrait – Block",
-		linewidth = 1.5, color = :royalblue, legend = false, aspect_ratio = :none)
-
-	ph2 = plot(θ2_t, rad2deg.(θ2dot_t),
-		xlabel = "θ₂ (°)", ylabel = "θ̇₂ (°/s)",
-		title = "Phase portrait – Bar",
-		linewidth = 1.5, color = :crimson, legend = false, aspect_ratio = :none)
-
-	plot(ph1, ph2, layout=(1,2), size=(800, 380))
+	ph1 = plot(x1_t[1:end-1], x1dot_t,
+		xlabel="x1 (m)", ylabel="x1dot (m/s)",
+		title="Phase portrait - Block", lw=1.5, color=:royalblue, legend=false)
+	ph2 = plot(th2_t[1:end-1], rad2deg.(th2dot_t),
+		xlabel="theta2 (deg)", ylabel="theta2dot (deg/s)",
+		title="Phase portrait - Bar", lw=1.5, color=:crimson, legend=false)
+	plot(ph1, ph2, layout=(1,2), size=(780,360))
 end
 
-# ╔═╡ a1b2c3d4-0016-11f1-0000-000000000016
-md"## ⑦ Constraint violation (numerical health check)"
+# ╔═╡ cell-cviol-header
+md"## ⑦ Constraint violation"
 
-# ╔═╡ a1b2c3d4-0017-11f1-0000-000000000017
-plot(times, C_viol,
-	xlabel = "Time (s)", ylabel = "|C(q)| (m)",
-	title = "Constraint violation (Baumgarte stabilisation, ω = $(ω_stab) rad/s)",
-	linewidth = 1.5, color = :purple, yscale = :log10, legend = false,
-	size = (800, 280))
+# ╔═╡ cell-cviol-plot
+plot(times, Cviol,
+	xlabel="Time (s)", ylabel="|C(q)|",
+	title="Constraint violation (Baumgarte stabilisation)",
+	lw=1.5, color=:purple, yscale=:log10, legend=false, size=(780,260))
 
-# ╔═╡ a1b2c3d4-0018-11f1-0000-000000000018
+# ╔═╡ cell-summary
 md"""
-## ⑧ Summary table
+## ⑧ Summary
 
 | Quantity | Min | Max |
 |---------|-----|-----|
-| ``x_1`` (m) | $(round(minimum(x1_t),digits=4)) | $(round(maximum(x1_t),digits=4)) |
-| ``\theta_2`` (°) | $(round(minimum(θ2_t),digits=2)) | $(round(maximum(θ2_t),digits=2)) |
-| ``F_x^{pin}`` (N) | $(round(minimum(Fx_t),digits=4)) | $(round(maximum(Fx_t),digits=4)) |
-| ``F_y^{pin}`` (N) | $(round(minimum(Fy_t),digits=4)) | $(round(maximum(Fy_t),digits=4)) |
-| ``\|C\|`` | — | $(round(maximum(C_viol),sigdigits=3)) |
+| x1 (m) | $(round(minimum(x1_t),digits=4)) | $(round(maximum(x1_t),digits=4)) |
+| theta2 (deg) | $(round(minimum(th2_t),digits=2)) | $(round(maximum(th2_t),digits=2)) |
+| Fx (N) | $(round(minimum(Fx_t),digits=4)) | $(round(maximum(Fx_t),digits=4)) |
+| Fy (N) | $(round(minimum(Fy_t),digits=4)) | $(round(maximum(Fy_t),digits=4)) |
+| max C violation | — | $(round(maximum(Cviol),sigdigits=3)) |
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -343,30 +312,30 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0"
 manifest_format = "2.0"
-project_hash = "placeholder"
+project_hash = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 
 [deps]
 """
 
 # ╔═╡ Cell order:
-# ╠═a1b2c3d4-0001-11f1-0000-000000000001
-# ╟─f17103ea-06bf-11f1-a2b0-79e68ed152eb
-# ╟─a1b2c3d4-0002-11f1-0000-000000000002
-# ╟─a1b2c3d4-0003-11f1-0000-000000000003
-# ╟─a1b2c3d4-0004-11f1-0000-000000000004
-# ╟─a1b2c3d4-0005-11f1-0000-000000000005
-# ╟─a1b2c3d4-0006-11f1-0000-000000000006
-# ╠═a1b2c3d4-0007-11f1-0000-000000000007
-# ╠═a1b2c3d4-0008-11f1-0000-000000000008
-# ╠═a1b2c3d4-0009-11f1-0000-000000000009
-# ╟─a1b2c3d4-0010-11f1-0000-000000000010
-# ╠═a1b2c3d4-0011-11f1-0000-000000000011
-# ╟─a1b2c3d4-0012-11f1-0000-000000000012
-# ╠═a1b2c3d4-0013-11f1-0000-000000000013
-# ╟─a1b2c3d4-0014-11f1-0000-000000000014
-# ╠═a1b2c3d4-0015-11f1-0000-000000000015
-# ╟─a1b2c3d4-0016-11f1-0000-000000000016
-# ╠═a1b2c3d4-0017-11f1-0000-000000000017
-# ╟─a1b2c3d4-0018-11f1-0000-000000000018
+# ╠═cell-imports
+# ╟─cell-intro
+# ╟─cell-params-header
+# ╟─cell-sliders-params
+# ╟─cell-ic-header
+# ╟─cell-sliders-ic
+# ╟─cell-solver-header
+# ╠═cell-derived
+# ╠═cell-functions
+# ╠═cell-simulate
+# ╟─cell-motion-header
+# ╠═cell-motion-plot
+# ╟─cell-forces-header
+# ╠═cell-forces-plot
+# ╟─cell-phase-header
+# ╠═cell-phase-plot
+# ╟─cell-cviol-header
+# ╠═cell-cviol-plot
+# ╟─cell-summary
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
