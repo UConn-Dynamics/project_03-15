@@ -16,13 +16,6 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ 00000000-0000-0000-0000-000000000001
-begin
-	import Pkg
-	Pkg.activate(temp = true)
-	Pkg.add(["Plots", "PlutoUI", "LinearAlgebra", "Printf"])
-end
-
 # ╔═╡ a1b2c3d4-0001-11f1-0000-000000000001
 using LinearAlgebra, Plots, PlutoUI, Printf
 
@@ -335,21 +328,27 @@ md"""
 | ``\|C\|`` | — | $(round(maximum(C_viol),sigdigits=3)) |
 """
 
-# ╔═╡ 00000000-0000-0000-0000-000000000002
+# ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d3"
+"""
 
-[compat]
-Plots = "~1"
-PlutoUI = "~0.7"
+# ╔═╡ 00000000-0000-0000-0000-000000000002
+PLUTO_MANIFEST_TOML_CONTENTS = """
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.10.0"
+manifest_format = "2.0"
+project_hash = "placeholder"
+
+[deps]
 """
 
 # ╔═╡ Cell order:
-# ╠═00000000-0000-0000-0000-000000000001
 # ╠═a1b2c3d4-0001-11f1-0000-000000000001
 # ╟─f17103ea-06bf-11f1-a2b0-79e68ed152eb
 # ╟─a1b2c3d4-0002-11f1-0000-000000000002
@@ -369,4 +368,5 @@ PlutoUI = "~0.7"
 # ╟─a1b2c3d4-0016-11f1-0000-000000000016
 # ╠═a1b2c3d4-0017-11f1-0000-000000000017
 # ╟─a1b2c3d4-0018-11f1-0000-000000000018
+# ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
