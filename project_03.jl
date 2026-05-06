@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.23
+# v0.20.22
 
 using Markdown
 using InteractiveUtils
@@ -33,6 +33,72 @@ In this project, you need to
 2. Create an augmented solution method for the dynamic motion of these two moving parts
 3. visualize the motion of the system as the two parts complete at least one oscillation
 4. calculate and show (graph or vectors) the constraint forces acting on the 2-body system
+"""
+
+# ╔═╡ bcac563f-a3bc-4b64-be4f-e18686186a75
+md"""
+## Methodology
+
+### Generalized coordinates
+
+The system's configuration is fully described by six generalized coordinates:
+
+$$\mathbf{q} = [x_1,\ y_1,\ \theta_1,\ x_2,\ y_2,\ \theta_2]^T$$
+
+where $(x_1, y_1, \theta_1)$ locate the sliding block and $(x_2, y_2, \theta_2)$ locate the bar's center of mass. Because four holonomic constraints are imposed (see below), the system has **two true degrees of freedom**: $x_1$ and $\theta_2$.
+
+### Kinetic energy and mass matrix
+
+Treating each body as a rigid body undergoing planar motion, the total kinetic energy is:
+
+$$T = \tfrac{1}{2}\dot{\mathbf{q}}^T \mathbf{M}\, \dot{\mathbf{q}}, \qquad \mathbf{M} = \operatorname{diag}(m_1,\ m_1,\ J_1,\ m_2,\ m_2,\ J_2)$$
+
+The bar's rotational inertia about its own center is $J_2 = \tfrac{1}{12}m_2 L^2$. The block's rotational inertia $J_1 \approx 0$ is a dummy entry because $\theta_1$ is fully constrained.
+
+### Constraint equations
+
+Four holonomic constraints $\mathbf{C}(\mathbf{q}) = \mathbf{0}$ enforce the physical joints:
+
+$$C_1 = y_1 = 0 \qquad \text{(block constrained to horizontal track)}$$
+$$C_2 = \theta_1 = 0 \qquad \text{(block cannot rotate)}$$
+$$C_3 = x_2 - \tfrac{L}{2}\cos\theta_2 - x_1 = 0 \qquad \text{(revolute joint, x-direction)}$$
+$$C_4 = y_2 - \tfrac{L}{2}\sin\theta_2 - y_1 = 0 \qquad \text{(revolute joint, y-direction)}$$
+
+Constraints $C_3$ and $C_4$ together enforce that the bar's lower end remains pinned to the block at all times.
+
+### Constraint Jacobian
+
+Differentiating $\mathbf{C}$ with respect to $\mathbf{q}$ gives the $4\times 6$ Jacobian $\mathbf{C_q} = \partial\mathbf{C}/\partial\mathbf{q}$:
+
+$$\mathbf{C_q} = \begin{bmatrix} 0 & 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 & 0 & 0 \\ -1 & 0 & 0 & 1 & 0 & \tfrac{L}{2}\sin\theta_2 \\ 0 & -1 & 0 & 0 & 1 & -\tfrac{L}{2}\cos\theta_2 \end{bmatrix}$$
+
+### Applied generalized forces
+
+The spring and gravitational loads map onto the generalized coordinates as:
+
+$$\mathbf{Q} = \begin{bmatrix} -kx_1 & -m_1 g & 0 & 0 & -m_2 g & 0 \end{bmatrix}^T$$
+
+The spring acts only on $x_1$; gravity acts only on the vertical DOFs $y_1$ and $y_2$.
+
+### Augmented equations of motion
+
+Introducing Lagrange multipliers $\boldsymbol{\lambda} \in \mathbb{R}^4$ for the constraint forces, the Lagrangian equations of motion become:
+
+$$\mathbf{M}\ddot{\mathbf{q}} = \mathbf{Q} - \mathbf{C_q}^T \boldsymbol{\lambda}$$
+
+subject to $\mathbf{C}(\mathbf{q}) = \mathbf{0}$. Differentiating the constraints twice with respect to time yields the acceleration-level constraint:
+
+$$\mathbf{C_q}\ddot{\mathbf{q}} = \boldsymbol{\gamma}, \qquad \boldsymbol{\gamma} = -\dot{\mathbf{C}_q}\dot{\mathbf{q}}$$
+
+For this system only the nonlinear revolute-joint constraints contribute non-zero $\gamma$ terms:
+
+$$\gamma_3 = -\tfrac{L}{2}\cos\theta_2\,\dot\theta_2^2, \qquad \gamma_4 = -\tfrac{L}{2}\sin\theta_2\,\dot\theta_2^2$$
+
+Combining yields the **augmented (KKT) linear system** solved at each time step:
+
+$$\begin{bmatrix} \mathbf{M} & \mathbf{C_q}^T \\ \mathbf{C_q} & \mathbf{0} \end{bmatrix} \begin{bmatrix} \ddot{\mathbf{q}} \\ \boldsymbol{\lambda} \end{bmatrix} = \begin{bmatrix} \mathbf{Q} \\ \boldsymbol{\gamma} \end{bmatrix}$$
+
+This $10\times 10$ system is solved directly at each integrator stage to obtain the accelerations $\ddot{\mathbf{q}}$ and the constraint (reaction) forces encoded in $\boldsymbol{\lambda}$.
 """
 
 # ╔═╡ 92f1a2f7-8406-438b-843a-df389c0fbd32
@@ -3054,6 +3120,7 @@ version = "1.13.0+0"
 # ╔═╡ Cell order:
 # ╟─f17103ea-06bf-11f1-a2b0-79e68ed152eb
 # ╠═0d9be664-d7c5-4084-add2-25e5418742d6
+# ╟─bcac563f-a3bc-4b64-be4f-e18686186a75
 # ╠═92f1a2f7-8406-438b-843a-df389c0fbd32
 # ╠═f45fe34d-9ead-444f-973e-73dd3ec1c494
 # ╠═f0de030b-bed3-4ab8-b89f-2685232cf220
